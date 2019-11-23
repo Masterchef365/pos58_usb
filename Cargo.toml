@@ -1,0 +1,8 @@
+[package]
+name = "pos58_usb"
+version = "0.1.0"
+authors = ["Masterchef365 <duncan.freeman1@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libusb = "0.3"
