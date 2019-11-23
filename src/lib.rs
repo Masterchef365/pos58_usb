@@ -81,7 +81,7 @@ impl<'a> POS58USB<'a> {
     }
 }
 
-impl<'a> Write for POS58USB<'a> {
+impl Write for POS58USB<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self
             .handle
