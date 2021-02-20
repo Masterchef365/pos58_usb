@@ -10,6 +10,7 @@ pub const DOTS_PER_MM: u32 = 8;
 pub struct POS58USB<'a> {
     handle: libusb::DeviceHandle<'a>,
     timeout: std::time::Duration,
+    chunk_size: usize,
     endpoint_addr: u8,
 }
 
@@ -21,10 +22,11 @@ impl<'a> POS58USB<'a> {
     ) -> libusb::Result<Self> {
         let (device, device_desc, mut handle) =
             Self::get_device(context).ok_or(libusb::Error::NoDevice)?;
-        let (endpoint_addr, interface_addr) =
+        let (endpoint_addr, interface_addr, packet_size) =
             Self::find_writeable_endpoint(&device, &device_desc).ok_or(libusb::Error::NotFound)?;
         handle.claim_interface(interface_addr)?;
         Ok(POS58USB {
+            chunk_size: packet_size as _,
             endpoint_addr,
             handle,
             timeout,
@@ -55,7 +57,7 @@ impl<'a> POS58USB<'a> {
     fn find_writeable_endpoint(
         device: &libusb::Device,
         device_desc: &libusb::DeviceDescriptor,
-    ) -> Option<(u8, u8)> {
+    ) -> Option<(u8, u8, u16)> {
         for n in 0..device_desc.num_configurations() {
             let config_desc = match device.config_descriptor(n) {
                 Ok(c) => c,
@@ -71,6 +73,7 @@ impl<'a> POS58USB<'a> {
                             return Some((
                                 endpoint_desc.address(),
                                 interface_desc.interface_number(),
+                                endpoint_desc.max_packet_size(),
                             ));
                         }
                     }
@@ -81,21 +84,29 @@ impl<'a> POS58USB<'a> {
     }
 }
 
+fn translate_error(e: libusb::Error) -> Error {
+    match e {
+        libusb::Error::NoDevice => Error::from(ErrorKind::NotConnected),
+        libusb::Error::Busy => Error::from(ErrorKind::WouldBlock),
+        libusb::Error::Timeout => Error::from(ErrorKind::TimedOut),
+        libusb::Error::Io => Error::from(ErrorKind::Interrupted),
+        _ => Error::from(ErrorKind::Other),
+    }
+}
+
 impl Write for POS58USB<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self
-            .handle
-            .write_bulk(self.endpoint_addr, buf, self.timeout)
-        {
-            Ok(bytes) => Ok(bytes),
-            Err(e) => Err(match e {
-                libusb::Error::NoDevice => Error::from(ErrorKind::NotConnected),
-                libusb::Error::Busy => Error::from(ErrorKind::WouldBlock),
-                libusb::Error::Timeout => Error::from(ErrorKind::TimedOut),
-                libusb::Error::Io => Error::from(ErrorKind::Interrupted),
-                _ => Error::from(ErrorKind::Other),
-            }),
+        let mut n_written = 0;
+        for chunk in buf.chunks_exact(self.chunk_size) {
+            match self
+                .handle
+                .write_bulk(self.endpoint_addr, chunk, self.timeout)
+                {
+                    Ok(bytes) => n_written += bytes,
+                    Err(e) => Err(translate_error(e))?,
+                }
         }
+        Ok(n_written)
     }
 
     fn flush(&mut self) -> io::Result<()> {
