@@ -97,7 +97,7 @@ fn translate_error(e: libusb::Error) -> Error {
 impl Write for POS58USB<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut n_written = 0;
-        for chunk in buf.chunks_exact(self.chunk_size) {
+        for chunk in buf.chunks(self.chunk_size) {
             match self
                 .handle
                 .write_bulk(self.endpoint_addr, chunk, self.timeout)
