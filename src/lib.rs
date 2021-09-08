@@ -22,9 +22,11 @@ impl<'a> POS58USB<'a> {
     ) -> libusb::Result<Self> {
         let (device, device_desc, mut handle) =
             Self::get_device(context).ok_or(libusb::Error::NoDevice)?;
-        let (endpoint_addr, interface_addr, packet_size) =
+        let (config, endpoint_addr, interface_addr, packet_size, setting) =
             Self::find_writeable_endpoint(&device, &device_desc).ok_or(libusb::Error::NotFound)?;
-        handle.claim_interface(interface_addr)?;
+        dbg!(handle.set_active_configuration(config))?;
+        dbg!(handle.claim_interface(interface_addr))?;
+        //dbg!(handle.set_alternate_setting(interface_addr, setting))?;
         Ok(POS58USB {
             chunk_size: packet_size as _,
             endpoint_addr,
@@ -57,7 +59,7 @@ impl<'a> POS58USB<'a> {
     fn find_writeable_endpoint(
         device: &libusb::Device,
         device_desc: &libusb::DeviceDescriptor,
-    ) -> Option<(u8, u8, u16)> {
+    ) -> Option<(u8, u8, u8, u16, u8)> {
         for n in 0..device_desc.num_configurations() {
             let config_desc = match device.config_descriptor(n) {
                 Ok(c) => c,
@@ -70,10 +72,13 @@ impl<'a> POS58USB<'a> {
                         if endpoint_desc.direction() == libusb::Direction::Out
                             && endpoint_desc.transfer_type() == libusb::TransferType::Bulk
                         {
+                            dbg!(&interface_desc, &endpoint_desc);
                             return Some((
+                                config_desc.number(),
                                 endpoint_desc.address(),
                                 interface_desc.interface_number(),
                                 endpoint_desc.max_packet_size(),
+                                interface_desc.setting_number()
                             ));
                         }
                     }
