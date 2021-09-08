@@ -2,9 +2,9 @@ use std::io::{self, Error, ErrorKind, Write};
 
 const VENDOR_ID: u16 = 0x0416;
 const PRODUCT_ID: u16 = 0x5011;
-pub const PAPER_WIDTH_MM: u32 = 58; 
-pub const PRINTABLE_WIDTH_MM: u32 = 48; 
-pub const DOTS_PER_MM: u32 = 8; 
+pub const PAPER_WIDTH_MM: u32 = 58;
+pub const PRINTABLE_WIDTH_MM: u32 = 48;
+pub const DOTS_PER_MM: u32 = 8;
 
 /// A POS58 printer connected to USB, exposing Write functionality
 pub struct POS58USB<'a> {
@@ -98,13 +98,10 @@ impl Write for POS58USB<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut n_written = 0;
         for chunk in buf.chunks(self.chunk_size) {
-            match self
+            n_written += self
                 .handle
                 .write_bulk(self.endpoint_addr, chunk, self.timeout)
-                {
-                    Ok(bytes) => n_written += bytes,
-                    Err(e) => Err(translate_error(e))?,
-                }
+                .map_err(translate_error)?;
         }
         Ok(n_written)
     }
